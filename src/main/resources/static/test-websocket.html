@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket JWT 테스트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            margin-bottom: 30px;
+            color: #00f260;
+        }
+        .section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #0575e6;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 15px;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #00f260;
+        }
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(120deg, #00f260, #0575e6);
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .status.connected {
+            background: #0ac630;
+            color: #fff;
+        }
+        .status.disconnected {
+            background: #ff4f4f;
+            color: #fff;
+        }
+        .status.connecting {
+            background: #ffa500;
+            color: #fff;
+        }
+        #log {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-left: 3px solid #333;
+            padding-left: 10px;
+        }
+        .log-entry.info {
+            border-left-color: #0575e6;
+            color: #0575e6;
+        }
+        .log-entry.success {
+            border-left-color: #0ac630;
+            color: #0ac630;
+        }
+        .log-entry.error {
+            border-left-color: #ff4f4f;
+            color: #ff4f4f;
+        }
+        .log-entry.message {
+            border-left-color: #00f260;
+            color: #00f260;
+        }
+        .token-info {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #888;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 WebSocket JWT 인증 테스트</h1>
+
+        <!-- Step 1: JWT 토큰 입력 -->
+        <div class="section">
+            <h2>1️⃣ JWT 토큰 입력</h2>
+            <label>Access Token (기존 백엔드에서 받은 토큰)</label>
+            <textarea id="accessToken" rows="4" placeholder="eyJhbGciOiJIUzI1NiJ9..."></textarea>
+            <button onclick="decodeToken()">🔍 토큰 정보 확인</button>
+            <div id="tokenInfo" class="token-info" style="display: none;"></div>
+        </div>
+
+        <!-- Step 2: WebSocket 연결 -->
+        <div class="section">
+            <h2>2️⃣ WebSocket 연결</h2>
+            <div id="status" class="status disconnected">❌ 연결 안됨</div>
+            <label>WebSocket URL</label>
+            <input type="text" id="wsUrl" value="ws://localhost:8081/ws" readonly>
+            <button id="connectBtn" onclick="connect()">🔌 연결하기</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>🔌 연결 끊기</button>
+        </div>
+
+        <!-- Step 3: 메시지 테스트 -->
+        <div class="section">
+            <h2>3️⃣ 메시지 테스트</h2>
+            <label>User ID</label>
+            <input type="text" id="userId" value="123">
+            <label>Chat Room ID</label>
+            <input type="text" id="chatRoomId" value="test-room-123">
+            
+            <button onclick="sendSubscribe()" disabled id="subscribeBtn">📢 SUBSCRIBE 전송</button>
+            <button onclick="sendChat()" disabled id="chatBtn">💬 CHAT 메시지 전송</button>
+            
+            <label style="margin-top: 15px;">커스텀 메시지 (JSON)</label>
+            <textarea id="customMessage" rows="5" placeholder='{"type": "CHAT", "chatRoomId": "test-room", "senderId": "123", "content": "Hello"}'></textarea>
+            <button onclick="sendCustom()" disabled id="customBtn">📤 커스텀 메시지 전송</button>
+        </div>
+
+        <!-- Step 4: 로그 -->
+        <div class="section">
+            <h2>4️⃣ 로그</h2>
+            <button onclick="clearLog()">🗑️ 로그 지우기</button>
+            <div id="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function decodeToken() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) {
+                alert('토큰을 입력해주세요!');
+                return;
+            }
+
+            try {
+                // JWT 디코딩 (페이로드만)
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    throw new Error('Invalid JWT format');
+                }
+                const payload = JSON.parse(atob(parts[1]));
+                
+                const tokenInfoDiv = document.getElementById('tokenInfo');
+                tokenInfoDiv.style.display = 'block';
+                tokenInfoDiv.innerHTML = `
+                    <strong>✅ 토큰 정보:</strong><br>
+                    • Email: ${payload.email || 'N/A'}<br>
+                    • User ID: ${payload.userId || 'N/A'}<br>
+                    • Role: ${payload.role || 'N/A'}<br>
+                    • Category: ${payload.category || 'N/A'}<br>
+                    • Issued At: ${new Date(payload.iat * 1000).toLocaleString()}<br>
+                    • Expires At: ${new Date(payload.exp * 1000).toLocaleString()}<br>
+                    • Expired: ${payload.exp * 1000 < Date.now() ? '⚠️ YES' : '✅ NO'}
+                `;
+                
+                // userId 자동 입력
+                if (payload.userId) {
+                    document.getElementById('userId').value = payload.userId;
+                }
+
+                log('토큰 디코딩 성공', 'success');
+            } catch (e) {
+                alert('토큰 디코딩 실패: ' + e.message);
+                log('토큰 디코딩 실패: ' + e.message, 'error');
+            }
+        }
+
+        function connect() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) {
+                alert('먼저 Access Token을 입력해주세요!');
+                return;
+            }
+
+            const wsUrl = document.getElementById('wsUrl').value;
+            const fullUrl = `${wsUrl}?accessToken=${encodeURIComponent(token)}`;
+
+            log(`연결 시도: ${wsUrl}`, 'info');
+            updateStatus('connecting');
+
+            try {
+                ws = new WebSocket(fullUrl);
+
+                ws.onopen = () => {
+                    log('✅ WebSocket 연결 성공! JWT 검증 통과!', 'success');
+                    updateStatus('connected');
+                    enableButtons(true);
+                };
+
+                ws.onmessage = (event) => {
+                    log(`📨 수신: ${event.data}`, 'message');
+                    try {
+                        const msg = JSON.parse(event.data);
+                        log(`  → Type: ${msg.type}, Content: ${JSON.stringify(msg)}`, 'message');
+                    } catch (e) {}
+                };
+
+                ws.onerror = (error) => {
+                    log('❌ WebSocket 에러 발생', 'error');
+                    console.error('WebSocket error:', error);
+                };
+
+                ws.onclose = (event) => {
+                    log(`🔌 연결 종료 (Code: ${event.code}, Reason: ${event.reason || 'N/A'})`, 'error');
+                    updateStatus('disconnected');
+                    enableButtons(false);
+                    ws = null;
+                };
+
+            } catch (e) {
+                log('❌ 연결 실패: ' + e.message, 'error');
+                updateStatus('disconnected');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                log('연결 종료 요청', 'info');
+            }
+        }
+
+        function sendSubscribe() {
+            const message = {
+                type: 'SUBSCRIBE',
+                userId: document.getElementById('userId').value,
+                chatRoomId: document.getElementById('chatRoomId').value
+            };
+            sendMessage(message);
+        }
+
+        function sendChat() {
+            const message = {
+                type: 'CHAT',
+                chatRoomId: document.getElementById('chatRoomId').value,
+                senderId: document.getElementById('userId').value,
+                senderName: 'Test User',
+                content: 'Hello from test! ' + new Date().toLocaleTimeString()
+            };
+            sendMessage(message);
+        }
+
+        function sendCustom() {
+            try {
+                const message = JSON.parse(document.getElementById('customMessage').value);
+                sendMessage(message);
+            } catch (e) {
+                alert('Invalid JSON: ' + e.message);
+                log('❌ Invalid JSON: ' + e.message, 'error');
+            }
+        }
+
+        function sendMessage(message) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket이 연결되지 않았습니다!');
+                return;
+            }
+
+            const json = JSON.stringify(message);
+            ws.send(json);
+            log(`📤 전송: ${json}`, 'info');
+        }
+
+        function updateStatus(status) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            
+            if (status === 'connected') {
+                statusDiv.textContent = '✅ 연결됨 (JWT 검증 성공)';
+            } else if (status === 'connecting') {
+                statusDiv.textContent = '🔄 연결 중... (JWT 검증 중)';
+            } else {
+                statusDiv.textContent = '❌ 연결 안됨';
+            }
+        }
+
+        function enableButtons(enabled) {
+            document.getElementById('connectBtn').disabled = enabled;
+            document.getElementById('disconnectBtn').disabled = !enabled;
+            document.getElementById('subscribeBtn').disabled = !enabled;
+            document.getElementById('chatBtn').disabled = !enabled;
+            document.getElementById('customBtn').disabled = !enabled;
+        }
+
+        // 초기 로그
+        log('🚀 WebSocket JWT 테스트 페이지 로드됨', 'success');
+        log('💡 Step 1: 먼저 기존 백엔드에서 로그인하여 Access Token을 받으세요', 'info');
+        log('💡 Step 2: Access Token을 입력하고 "토큰 정보 확인"을 눌러 유효성을 체크하세요', 'info');
+        log('💡 Step 3: "연결하기" 버튼을 눌러 WebSocket 연결을 테스트하세요', 'info');
+    </script>
+</body>
+</html>
