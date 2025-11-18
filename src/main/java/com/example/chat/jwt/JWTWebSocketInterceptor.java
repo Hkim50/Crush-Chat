@@ -1,7 +1,5 @@
 package com.example.chat.jwt;
 
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -43,50 +41,47 @@ public class JWTWebSocketInterceptor implements WebFilter {
             return handleUnauthorized(exchange, "Missing access token");
         }
 
+        // 통합 검증 메서드 사용
+        JWTUtil.TokenValidationResult result = jwtUtil.validateToken(accessToken);
+        
+        if (!result.isValid()) {
+            log.warn("WebSocket handshake failed: {}", result.getErrorMessage());
+            return handleUnauthorized(exchange, result.getErrorMessage());
+        }
+
         try {
-            // 1. 토큰 만료 확인
-            if (jwtUtil.isExpired(accessToken)) {
-                log.warn("WebSocket handshake failed: token expired");
-                return handleUnauthorized(exchange, "Token expired");
-            }
-
-            // 2. category 확인
-            String category = jwtUtil.getCategory(accessToken);
-            if (!"accessToken".equals(category)) {
-                log.warn("WebSocket handshake failed: invalid token category: {}", category);
-                return handleUnauthorized(exchange, "Invalid token category");
-            }
-
-            // 3. userId 추출
+            // userId, email 추출 및 저장
             Long userId = jwtUtil.getUserId(accessToken);
             String email = jwtUtil.getEmail(accessToken);
+            String role = jwtUtil.getRole(accessToken);
 
-            log.info("WebSocket handshake authorized: userId={}, email={}", userId, email);
+            log.info("WebSocket handshake authorized: userId={}, email={}, role={}", userId, email, role);
 
-            // 4. userId를 attributes에 저장 (나중에 사용 가능)
+            // attributes에 저장 (WebSocketHandler에서 사용 가능)
             exchange.getAttributes().put("userId", userId);
             exchange.getAttributes().put("email", email);
+            exchange.getAttributes().put("role", role);
 
             return chain.filter(exchange);
 
-        } catch (ExpiredJwtException e) {
-            log.warn("WebSocket handshake failed: token expired", e);
-            return handleUnauthorized(exchange, "Token expired");
-        } catch (JwtException e) {
-            log.error("WebSocket handshake failed: invalid token", e);
-            return handleUnauthorized(exchange, "Invalid token");
         } catch (Exception e) {
             log.error("WebSocket handshake failed: unexpected error", e);
             return handleUnauthorized(exchange, "Authentication failed");
         }
     }
 
+    /**
+     * 인증 실패 응답
+     */
     private Mono<Void> handleUnauthorized(ServerWebExchange exchange, String message) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);
         response.getHeaders().add("Content-Type", "application/json");
         
-        String json = String.format("{\"error\": \"%s\"}", message);
+        String json = String.format("{\"error\": \"%s\", \"timestamp\": \"%s\"}", 
+                message, 
+                java.time.Instant.now().toString());
+        
         return response.writeWith(
             Mono.just(response.bufferFactory().wrap(json.getBytes()))
         );
